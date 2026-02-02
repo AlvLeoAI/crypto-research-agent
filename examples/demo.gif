@@ -1,0 +1,35 @@
+<!--
+This is a placeholder for the demo GIF.
+
+To create an actual demo recording:
+
+1. Install asciinema and agg:
+   pip install asciinema
+   cargo install --git https://github.com/asciinema/agg
+
+2. Record your terminal session:
+   asciinema rec demo.cast
+
+3. Run the crypto-research agent and demonstrate:
+   - Starting the application
+   - Researching a token (e.g., "research bitcoin")
+   - Showing the parallel subagent dispatch
+   - Displaying the final report
+
+4. Convert to GIF:
+   agg demo.cast demo.gif --speed 1.5
+
+5. Replace this file with the actual GIF.
+
+Alternatively, use tools like:
+- terminalizer (npm install -g terminalizer)
+- vhs (https://github.com/charmbracelet/vhs)
+- Gifox (macOS)
+- Peek (Linux)
+
+Recommended GIF settings:
+- Width: 800-1000px
+- Duration: 30-60 seconds
+- Speed: 1.5x normal
+- Show: startup → input → parallel dispatch → report output
+-->

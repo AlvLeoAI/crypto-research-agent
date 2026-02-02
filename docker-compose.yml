@@ -1,0 +1,121 @@
+# =============================================================================
+# Crypto Research Agent - Docker Compose
+# =============================================================================
+
+version: '3.8'
+
+services:
+  # ---------------------------------------------------------------------------
+  # Main Application
+  # ---------------------------------------------------------------------------
+  crypto-research:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: crypto-research-agent
+
+    # Environment variables
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - COINGECKO_API_KEY=${COINGECKO_API_KEY:-}
+      - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-sonnet-4-20250514}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - OUTPUT_DIR=/app/output
+
+    # Mount volumes for persistence
+    volumes:
+      - ./output:/app/output
+      # Mount prompts and skills for hot-reloading during development
+      - ./prompts:/app/prompts:ro
+      - ./.claude:/app/.claude:ro
+
+    # Interactive terminal
+    stdin_open: true
+    tty: true
+
+    # Restart policy
+    restart: unless-stopped
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+
+  # ---------------------------------------------------------------------------
+  # Development Environment
+  # ---------------------------------------------------------------------------
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: crypto-research-dev
+
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - COINGECKO_API_KEY=${COINGECKO_API_KEY:-}
+      - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-sonnet-4-20250514}
+      - DEBUG=true
+
+    volumes:
+      # Mount source code for development
+      - ./src:/app/src
+      - ./tests:/app/tests
+      - ./prompts:/app/prompts
+      - ./.claude:/app/.claude
+      - ./output:/app/output
+
+    stdin_open: true
+    tty: true
+
+    # Override command for interactive development
+    command: ["python", "-m", "src.agent"]
+
+    profiles:
+      - dev
+
+  # ---------------------------------------------------------------------------
+  # Test Runner
+  # ---------------------------------------------------------------------------
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: crypto-research-test
+
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-test_key}
+
+    volumes:
+      - ./src:/app/src:ro
+      - ./tests:/app/tests:ro
+      - ./prompts:/app/prompts:ro
+      - ./.claude:/app/.claude:ro
+
+    command: ["pytest", "-v", "--tb=short"]
+
+    profiles:
+      - test
+
+# =============================================================================
+# Usage:
+# =============================================================================
+#
+# Run the main application:
+#   docker-compose up crypto-research
+#
+# Run in development mode:
+#   docker-compose --profile dev up dev
+#
+# Run tests:
+#   docker-compose --profile test run --rm test
+#
+# Build all images:
+#   docker-compose build
+#
+# =============================================================================
