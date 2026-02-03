@@ -14,11 +14,13 @@ The agent is fully functional with:
 - Parallel subagent execution
 - Report synthesis
 - Notion integration for saving reports
+- **Weekly Allocation Guidance** - Deterministic DCA recommendations
 
-### Last Test (2026-02-02)
+### Last Test (2026-02-03)
 ```
 BTC: $78,824 (+1.62% 24h, -10.65% 7d)
 RSI: 57.63 | Trend: Strong Uptrend
+Weekly Allocation: Accumulate (100% of weekly DCA)
 Successfully saved to Notion!
 ```
 
@@ -28,11 +30,13 @@ Successfully saved to Notion!
 User Input → Main Agent (orchestrator)
                 │
                 ├── price_analyst    → CoinGecko MCP (LIVE DATA ✅)
-                ├── news_aggregator  → Claude knowledge (needs web search)
-                └── social_sentinel  → Claude knowledge (needs web search)
+                ├── news_aggregator  → Web Search (real-time news)
+                └── social_sentinel  → Web Search (sentiment data)
                 │
                 ▼
-            Synthesis → Report → Terminal / File / Notion
+            Synthesis + Allocation Guidance → Report → Terminal / File / Notion
+                            │
+                            └── 🧭 Weekly Allocation Guidance (deterministic)
 ```
 
 ## Project Structure
@@ -42,7 +46,7 @@ crypto_research_agent/
 ├── src/
 │   ├── agent.py                 # Main orchestrator
 │   ├── subagents/               # 3 specialized agents
-│   ├── utils/                   # display.py, prompts.py
+│   ├── utils/                   # display.py, prompts.py, allocation_guidance.py
 │   └── mcp/                     # Legacy (moved to mcp_servers/)
 ├── mcp_servers/
 │   ├── coingecko/               # ✅ Working - live price data
@@ -71,6 +75,27 @@ crypto_research_agent/
 3. **Parallel Subagents** - All 3 run concurrently
 4. **Report Synthesis** - Combines findings into formatted report
 5. **Rich Terminal UI** - Beautiful output with panels and tables
+6. **Weekly Allocation Guidance** - Deterministic DCA recommendations based on technical signals
+
+### Weekly Allocation Guidance (NEW)
+
+The report now includes a "🧭 Weekly Allocation Guidance" section with:
+- **Action Bias**: Pause / Hold / Light Accumulate / Accumulate
+- **Allocation Hint**: 0% / 25% / 50% / 100% of weekly DCA
+- **Why**: 2-4 bullets explaining the decision
+- **Invalidation Triggers**: 2-3 conditions that would change the recommendation
+- **Next Check**: What to watch for next week
+
+**Decision Logic:**
+| Structure | RSI | Data | Bias | Allocation |
+|-----------|-----|------|------|------------|
+| Bullish (price > SMA20 > SMA50) | Neutral/Positive | OK | Accumulate | 100% |
+| Bullish | Low | OK | Light Accumulate | 50% |
+| Warning (price > SMA50, < SMA20) | Neutral | OK | Light Accumulate | 50% |
+| Risk-off (price < SMA50) | Any | OK | Hold | 25% |
+| Risk-off + Support Broken | Any | OK | Pause | 0% |
+
+**Data Limitation:** If news/sentiment unavailable, bias is downgraded by 1 step.
 
 ## Environment Setup
 
@@ -110,33 +135,35 @@ asyncio.run(test())
 
 1. **Rate Limits** - Anthropic API has 30K tokens/min limit. Running all 3 subagents + synthesis can hit this. Wait 60s between runs if needed.
 
-2. **News/Sentiment** - Currently use Claude's knowledge, not live web search. Could be enhanced with:
-   - WebSearch tool integration
-   - News API (NewsAPI, CryptoPanic)
-   - Social APIs (Twitter, Reddit)
+2. **News/Sentiment Data** - Uses web search which may occasionally be rate-limited. When unavailable:
+   - Allocation guidance automatically downgrades bias by 1 step
+   - Report indicates data limitation in the "Why" section
 
 3. **Notion Properties** - Database needs these select properties:
    - Token, Confidence (High/Medium/Low), Sentiment (Bullish/Neutral/Bearish), Date
 
 ## Potential Next Steps
 
-1. **Add WebSearch** - Real-time news and sentiment via web search
-2. **Add Slack MCP** - Send alerts to Slack channel
-3. **Reduce Token Usage** - Use Haiku for subagents to avoid rate limits
-4. **Add More Tokens** - Extend TOKEN_ID_MAP in coingecko client
-5. **Scheduled Research** - Cron job for daily reports
-6. **Portfolio Mode** - Research multiple tokens at once
-7. **Historical Tracking** - Compare reports over time
+1. **Add Slack MCP** - Send alerts to Slack channel
+2. **Reduce Token Usage** - Use Haiku for subagents to avoid rate limits
+3. **Add More Tokens** - Extend TOKEN_ID_MAP in coingecko client
+4. **Scheduled Research** - Cron job for daily/weekly reports
+5. **Portfolio Mode** - Research multiple tokens at once
+6. **Historical Tracking** - Compare reports over time
+7. **Allocation Confidence** - Add numeric confidence to allocation guidance
 
 ## Key Files to Know
 
 | File | Purpose |
 |------|---------|
 | `src/agent.py` | Main orchestrator, CLI loop |
+| `src/utils/allocation_guidance.py` | Deterministic weekly allocation logic |
+| `src/subagents/price_analyst.py` | Technical analysis, returns signals dict |
 | `mcp_servers/coingecko/client.py` | CoinGecko API client |
 | `mcp_servers/notion/client.py` | Notion API client |
 | `.claude/skills/*/SKILL.md` | Research methodologies |
 | `prompts/*.md` | Agent system prompts |
+| `tests/test_allocation_guidance.py` | 42 tests for allocation logic |
 
 ## Commands Cheat Sheet
 
@@ -170,4 +197,4 @@ pytest -v
 ```
 
 ---
-*Last updated: 2026-02-02*
+*Last updated: 2026-02-03*

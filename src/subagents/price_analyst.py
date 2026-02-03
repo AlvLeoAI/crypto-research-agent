@@ -54,17 +54,19 @@ def calculate_sma(prices: list[float], period: int) -> float | None:
     return round(sum(prices[-period:]) / period, 2)
 
 
-async def run_price_analyst(token: str, client: Anthropic, model: str) -> str:
+async def run_price_analyst(token: str, client: Anthropic, model: str) -> dict:
     """
     Run the price analyst subagent with real MCP data.
-    
+
     Args:
         token: Cryptocurrency token to analyze (e.g., "bitcoin", "ETH")
         client: Anthropic client instance
         model: Model to use for analysis
-    
+
     Returns:
-        Price analysis report as markdown string
+        dict with:
+            - "analysis": Price analysis report as markdown string
+            - "signals": dict with raw technical signals for allocation guidance
     """
     # Load prompt and skill
     try:
@@ -230,5 +232,24 @@ This is LIVE DATA - provide specific analysis based on these exact numbers."""
         system=system_prompt,
         messages=[{"role": "user", "content": user_message}]
     )
-    
-    return response.content[0].text
+
+    # Build signals dict for allocation guidance
+    # Estimate support/resistance from historical high/low
+    support_1 = historical_data.get("price_low")
+    resistance_1 = historical_data.get("price_high")
+
+    signals = {
+        "current_price": price_data.get("current_price_usd"),
+        "price_change_7d": price_data.get("price_change_7d_percent"),
+        "sma_20": sma_20,
+        "sma_50": sma_50,
+        "rsi_14": rsi,
+        "support_1": support_1,
+        "resistance_1": resistance_1,
+        "volume_status": "above" if volume_ratio and volume_ratio > 1 else "below" if volume_ratio else None,
+    }
+
+    return {
+        "analysis": response.content[0].text,
+        "signals": signals,
+    }

@@ -19,6 +19,23 @@ Use this template for all cryptocurrency research reports.
 
 ---
 
+### 🧭 Weekly Allocation Guidance
+<!-- This section is auto-generated deterministically from price signals -->
+**Action Bias**: [Pause / Hold / Light Accumulate / Accumulate]
+**Allocation Hint**: [0% / 25% / 50% / 100%] of weekly DCA
+**Time Horizon**: 1 week
+
+**Why**
+- [2-4 bullets explaining the decision]
+
+**Invalidation Triggers**
+- [2-3 bullets with hard rules and price levels]
+
+**Next Check**
+- [1-2 bullets: next update timing and what to watch]
+
+---
+
 ## 💰 Price Analysis
 
 ### Current Metrics

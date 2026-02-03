@@ -29,6 +29,10 @@ from src.utils.display import (
 from src.subagents.price_analyst import run_price_analyst
 from src.subagents.news_aggregator import run_news_aggregator
 from src.subagents.social_sentinel import run_social_sentinel
+from src.utils.allocation_guidance import (
+    AllocationSignals,
+    build_weekly_allocation_guidance_markdown,
+)
 
 # Load environment variables
 load_dotenv()
@@ -61,41 +65,157 @@ def load_skill_reference(skill_name: str, reference_name: str) -> str:
 async def run_subagents_parallel(token: str) -> dict:
     """
     Dispatch all three subagents in parallel.
-    
-    Returns dict with results from each subagent.
+
+    Returns dict with:
+        - "price_analysis": markdown analysis from price_analyst
+        - "news_analysis": markdown analysis from news_aggregator
+        - "sentiment_analysis": markdown analysis from social_sentinel
+        - "price_signals": raw technical signals dict for allocation guidance
+        - "news_available": bool indicating if news data was successfully retrieved
+        - "sentiment_available": bool indicating if sentiment data was successfully retrieved
     """
     print_status("Dispatching research subagents in parallel...")
-    
+
     # Create tasks for parallel execution
     tasks = [
         asyncio.create_task(run_price_analyst(token, client, MODEL)),
         asyncio.create_task(run_news_aggregator(token, client, MODEL)),
         asyncio.create_task(run_social_sentinel(token, client, MODEL)),
     ]
-    
+
     # Show dispatch status
     print_subagent_dispatch("price_analyst", f"Analyzing {token} price and technicals")
     print_subagent_dispatch("news_aggregator", f"Gathering {token} news and developments")
     print_subagent_dispatch("social_sentinel", f"Assessing {token} market sentiment")
-    
+
     # Wait for all to complete
     results = await asyncio.gather(*tasks, return_exceptions=True)
-    
-    # Process results
+
+    # Process price_analyst result (now returns dict with analysis + signals)
+    price_result = results[0]
+    if isinstance(price_result, Exception):
+        price_analysis = f"Error: {price_result}"
+        price_signals = {}
+    elif isinstance(price_result, dict):
+        price_analysis = price_result.get("analysis", "")
+        price_signals = price_result.get("signals", {})
+    else:
+        # Backward compatibility: if it returns a string directly
+        price_analysis = price_result
+        price_signals = {}
+
+    # Process news and sentiment results
+    news_analysis = results[1] if not isinstance(results[1], Exception) else f"Error: {results[1]}"
+    sentiment_analysis = results[2] if not isinstance(results[2], Exception) else f"Error: {results[2]}"
+
+    # Detect data availability issues
+    news_unavailable_indicators = [
+        "unable to gather",
+        "error:",
+        "unavailable",
+        "rate limit",
+        "no news",
+        "could not fetch",
+    ]
+    sentiment_unavailable_indicators = [
+        "unable to gather",
+        "error:",
+        "unavailable",
+        "rate limit",
+        "no sentiment",
+        "could not fetch",
+    ]
+
+    news_lower = news_analysis.lower() if isinstance(news_analysis, str) else ""
+    sentiment_lower = sentiment_analysis.lower() if isinstance(sentiment_analysis, str) else ""
+
+    news_available = not any(ind in news_lower for ind in news_unavailable_indicators)
+    sentiment_available = not any(ind in sentiment_lower for ind in sentiment_unavailable_indicators)
+
     subagent_results = {
-        "price_analysis": results[0] if not isinstance(results[0], Exception) else f"Error: {results[0]}",
-        "news_analysis": results[1] if not isinstance(results[1], Exception) else f"Error: {results[1]}",
-        "sentiment_analysis": results[2] if not isinstance(results[2], Exception) else f"Error: {results[2]}",
+        "price_analysis": price_analysis,
+        "news_analysis": news_analysis,
+        "sentiment_analysis": sentiment_analysis,
+        "price_signals": price_signals,
+        "news_available": news_available,
+        "sentiment_available": sentiment_available,
     }
-    
+
     # Show completion status
-    for name, result in subagent_results.items():
-        if isinstance(result, str) and result.startswith("Error:"):
+    result_display = {
+        "price_analysis": price_analysis,
+        "news_analysis": news_analysis,
+        "sentiment_analysis": sentiment_analysis,
+    }
+    for name, result in result_display.items():
+        if isinstance(result, str) and result.lower().startswith("error:"):
             print_subagent_result(name, "failed", result)
         else:
             print_subagent_result(name, "complete", f"{len(result)} chars")
-    
+
     return subagent_results
+
+
+def inject_allocation_guidance(report: str, guidance_markdown: str) -> str:
+    """
+    Inject the Weekly Allocation Guidance section into the report.
+
+    Inserts after "## 📊 Executive Summary" section (before "## 💰 Price Analysis").
+    Falls back to inserting after first "---" divider if sections not found.
+    """
+    import re
+
+    # Try to find the Price Analysis section header
+    price_analysis_patterns = [
+        r"(## 💰 Price Analysis)",
+        r"(## Price Analysis)",
+        r"(##\s+💰\s*Price Analysis)",
+    ]
+
+    for pattern in price_analysis_patterns:
+        match = re.search(pattern, report, re.IGNORECASE)
+        if match:
+            insert_pos = match.start()
+            # Insert guidance section with divider before Price Analysis
+            return (
+                report[:insert_pos]
+                + guidance_markdown
+                + "\n\n---\n\n"
+                + report[insert_pos:]
+            )
+
+    # Fallback: find first "---" divider after Executive Summary
+    exec_summary_match = re.search(r"## 📊 Executive Summary", report, re.IGNORECASE)
+    if exec_summary_match:
+        # Find the next "---" after Executive Summary
+        divider_match = re.search(r"\n---\n", report[exec_summary_match.end():])
+        if divider_match:
+            insert_pos = exec_summary_match.end() + divider_match.end()
+            return (
+                report[:insert_pos]
+                + "\n"
+                + guidance_markdown
+                + "\n\n---\n"
+                + report[insert_pos:]
+            )
+
+    # Last fallback: prepend after title (after first "---")
+    first_divider = report.find("---")
+    if first_divider != -1:
+        # Find end of first divider
+        insert_pos = first_divider + 3
+        while insert_pos < len(report) and report[insert_pos] in "\n\r":
+            insert_pos += 1
+        return (
+            report[:insert_pos]
+            + "\n"
+            + guidance_markdown
+            + "\n\n---\n\n"
+            + report[insert_pos:]
+        )
+
+    # Absolute fallback: prepend to report
+    return guidance_markdown + "\n\n---\n\n" + report
 
 
 def synthesize_report(
@@ -104,10 +224,11 @@ def synthesize_report(
     report_template: str
 ) -> str:
     """
-    Use Claude to synthesize subagent results into final report.
+    Use Claude to synthesize subagent results into final report,
+    then inject the deterministic Weekly Allocation Guidance section.
     """
     print_status("Synthesizing research findings...")
-    
+
     synthesis_prompt = f"""You are synthesizing a cryptocurrency research report for {token}.
 
 You have received analysis from three specialized subagents:
@@ -136,14 +257,39 @@ Synthesize these findings into a cohesive research report following this templat
 
 Generate the complete report now. Include today's date: {datetime.now().strftime('%Y-%m-%d %H:%M UTC')}
 """
-    
+
     response = client.messages.create(
         model=MODEL,
         max_tokens=4096,
         messages=[{"role": "user", "content": synthesis_prompt}]
     )
-    
-    return response.content[0].text
+
+    report = response.content[0].text
+
+    # Build allocation guidance from price signals
+    price_signals = subagent_results.get("price_signals", {})
+    news_available = subagent_results.get("news_available", True)
+    sentiment_available = subagent_results.get("sentiment_available", True)
+
+    signals = AllocationSignals(
+        current_price=price_signals.get("current_price"),
+        price_change_7d=price_signals.get("price_change_7d"),
+        sma_20=price_signals.get("sma_20"),
+        sma_50=price_signals.get("sma_50"),
+        rsi_14=price_signals.get("rsi_14"),
+        support_1=price_signals.get("support_1"),
+        resistance_1=price_signals.get("resistance_1"),
+        volume_status=price_signals.get("volume_status"),
+        news_available=news_available,
+        sentiment_available=sentiment_available,
+    )
+
+    guidance_markdown = build_weekly_allocation_guidance_markdown(signals)
+
+    # Inject guidance section into report
+    report = inject_allocation_guidance(report, guidance_markdown)
+
+    return report
 
 
 async def research_token(token: str) -> str:

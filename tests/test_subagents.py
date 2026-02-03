@@ -112,8 +112,8 @@ class TestPriceAnalyst:
     """Tests for price_analyst subagent."""
 
     @pytest.mark.asyncio
-    async def test_run_price_analyst_returns_string(self, mock_anthropic_client):
-        """run_price_analyst should return a string."""
+    async def test_run_price_analyst_returns_dict_with_analysis(self, mock_anthropic_client):
+        """run_price_analyst should return a dict with analysis key."""
         from src.subagents.price_analyst import run_price_analyst
 
         result = await run_price_analyst(
@@ -122,8 +122,42 @@ class TestPriceAnalyst:
             model="claude-sonnet-4-20250514"
         )
 
-        assert isinstance(result, str)
-        assert len(result) > 0
+        assert isinstance(result, dict)
+        assert "analysis" in result
+        assert isinstance(result["analysis"], str)
+        assert len(result["analysis"]) > 0
+
+    @pytest.mark.asyncio
+    async def test_run_price_analyst_returns_dict_with_signals(self, mock_anthropic_client):
+        """run_price_analyst should return a dict with signals key."""
+        from src.subagents.price_analyst import run_price_analyst
+
+        result = await run_price_analyst(
+            token="bitcoin",
+            client=mock_anthropic_client,
+            model="claude-sonnet-4-20250514"
+        )
+
+        assert isinstance(result, dict)
+        assert "signals" in result
+        assert isinstance(result["signals"], dict)
+
+    @pytest.mark.asyncio
+    async def test_run_price_analyst_signals_contain_expected_keys(self, mock_anthropic_client):
+        """run_price_analyst signals should contain expected technical signal keys."""
+        from src.subagents.price_analyst import run_price_analyst
+
+        result = await run_price_analyst(
+            token="bitcoin",
+            client=mock_anthropic_client,
+            model="claude-sonnet-4-20250514"
+        )
+
+        signals = result["signals"]
+        expected_keys = ["current_price", "price_change_7d", "sma_20", "sma_50", "rsi_14", "support_1", "resistance_1", "volume_status"]
+
+        for key in expected_keys:
+            assert key in signals, f"Missing signal key: {key}"
 
     @pytest.mark.asyncio
     async def test_run_price_analyst_calls_api(self, mock_anthropic_client):
