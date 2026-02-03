@@ -265,8 +265,10 @@ async def interactive_loop():
             print_report(report)
             
             # Offer to save
-            save = console.input("\n[dim]Save report to file? (y/n): [/dim]").strip().lower()
-            if save == "y":
+            save = console.input("\n[dim]Save report? (f=file, n=notion, enter=skip): [/dim]").strip().lower()
+            
+            if save == "f":
+                # Save to local file
                 output_dir = Path(os.getenv("OUTPUT_DIR", "./output"))
                 output_dir.mkdir(exist_ok=True)
                 
@@ -274,7 +276,60 @@ async def interactive_loop():
                 filepath = output_dir / filename
                 filepath.write_text(report)
                 
-                console.print(f"[green]Saved to {filepath}[/green]")
+                console.print(f"[green]✓ Saved to {filepath}[/green]")
+            
+            elif save == "n":
+                # Save to Notion
+                try:
+                    from mcp_servers.notion import NotionMCPHandler
+                    
+                    notion_handler = NotionMCPHandler()
+                    
+                    if not notion_handler.is_configured:
+                        console.print(
+                            "[yellow]Notion not configured. Set NOTION_API_KEY and "
+                            "NOTION_DATABASE_ID in your .env file.[/yellow]"
+                        )
+                    else:
+                        console.print("[dim]Saving to Notion...[/dim]")
+                        
+                        # Extract sentiment and confidence from report (simple heuristic)
+                        report_lower = report.lower()
+                        if "bullish" in report_lower:
+                            sentiment = "Bullish"
+                        elif "bearish" in report_lower:
+                            sentiment = "Bearish"
+                        else:
+                            sentiment = "Neutral"
+                        
+                        if "high confidence" in report_lower:
+                            confidence = "High"
+                        elif "low confidence" in report_lower:
+                            confidence = "Low"
+                        else:
+                            confidence = "Medium"
+                        
+                        result = await notion_handler.handle_tool_call(
+                            "save_report_to_notion",
+                            {
+                                "token": token,
+                                "report_content": report,
+                                "confidence": confidence,
+                                "sentiment": sentiment
+                            }
+                        )
+                        
+                        await notion_handler.close()
+                        
+                        if result.get("success"):
+                            console.print(f"[green]✓ Saved to Notion: {result.get('url')}[/green]")
+                        else:
+                            console.print(f"[red]Failed: {result.get('error')}[/red]")
+                            
+                except ImportError:
+                    console.print("[red]Notion MCP not available[/red]")
+                except Exception as e:
+                    console.print(f"[red]Notion error: {e}[/red]")
         
         except KeyboardInterrupt:
             console.print("\n[yellow]Interrupted. Type 'quit' to exit.[/yellow]")

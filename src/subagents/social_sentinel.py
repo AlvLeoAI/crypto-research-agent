@@ -2,6 +2,7 @@
 Social Sentinel Subagent
 
 Specialized agent for analyzing market sentiment and social signals.
+Uses Anthropic's web_search tool to fetch real-time sentiment data.
 """
 
 from pathlib import Path
@@ -23,7 +24,7 @@ def load_skill_content() -> tuple[str, str]:
 
 async def run_social_sentinel(token: str, client: Anthropic, model: str) -> str:
     """
-    Run the social sentinel subagent.
+    Run the social sentinel subagent with web search.
     
     Args:
         token: Cryptocurrency token to analyze (e.g., "bitcoin", "ETH")
@@ -53,28 +54,68 @@ async def run_social_sentinel(token: str, client: Anthropic, model: str) -> str:
 {rules_ref}
 """
     
-    # User request
-    user_message = f"""Analyze market sentiment for {token}:
+    # User request - agent will use web_search tool
+    user_message = f"""Analyze market sentiment for {token}.
+
+Use the web_search tool to find sentiment data. Search for:
+1. "crypto fear greed index today" - get current market sentiment
+2. "{token} sentiment twitter reddit" - social media sentiment
+
+Then analyze following the sentiment-analysis skill:
 1. Assess the current Fear & Greed context
-2. Evaluate Twitter/X sentiment and activity
-3. Evaluate Reddit sentiment and activity
-4. Identify where we are in the sentiment cycle
-5. Note any contrarian indicators
-6. Flag potential manipulation or warning signs
+2. Evaluate social media sentiment (Twitter/X, Reddit)
+3. Identify where we are in the sentiment cycle
+4. Note any contrarian indicators
+5. Flag potential manipulation or warning signs
 
-Follow the sentiment-analysis skill workflow and output format exactly.
+Provide your analysis in the skill's output format."""
 
-Note: You don't have direct social media access in this context. Use your knowledge of 
-general market sentiment patterns and any recent sentiment trends you're aware of. 
-Indicate that real-time sentiment data would need to be fetched via WebSearch tool.
-Provide the best analysis you can with available information."""
+    # Define web_search tool
+    tools = [
+        {
+            "type": "web_search_20250305",
+            "name": "web_search",
+            "max_uses": 3  # Limit searches to control costs
+        }
+    ]
     
-    # Call Claude
-    response = client.messages.create(
-        model=model,
-        max_tokens=2048,
-        system=system_prompt,
-        messages=[{"role": "user", "content": user_message}]
-    )
+    # Call Claude with web_search tool
+    messages = [{"role": "user", "content": user_message}]
     
-    return response.content[0].text
+    # Agentic loop to handle tool use
+    while True:
+        response = client.messages.create(
+            model=model,
+            max_tokens=4096,
+            system=system_prompt,
+            tools=tools,
+            messages=messages
+        )
+        
+        # Check if we need to process tool use
+        if response.stop_reason == "tool_use":
+            # Add assistant's response to messages
+            messages.append({"role": "assistant", "content": response.content})
+            
+            # Process tool results
+            tool_results = []
+            for block in response.content:
+                if block.type == "tool_use":
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": "Search completed - results provided above."
+                    })
+            
+            messages.append({"role": "user", "content": tool_results})
+        else:
+            # No more tool use, extract final text
+            break
+    
+    # Extract text from response
+    result_text = ""
+    for block in response.content:
+        if hasattr(block, "text"):
+            result_text += block.text
+    
+    return result_text if result_text else "Unable to gather sentiment data."
